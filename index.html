@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
+    <title>Muffe — vetrino</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="is-entering">
+    <div id="entry" aria-hidden="true">
+      <div class="entry-void"></div>
+      <div class="entry-scene">
+        <div class="entry-rig" id="entryRig">
+          <div class="entry-shadow"></div>
+          <div class="entry-disc">
+            <div class="entry-back"></div>
+            <div class="entry-band"></div>
+            <div class="entry-face">
+              <canvas class="entry-spores" id="entrySpores" aria-hidden="true"></canvas>
+              <div class="entry-glass"></div>
+              <div class="entry-map" id="entryMap"></div>
+            </div>
+            <div class="entry-rim"></div>
+          </div>
+        </div>
+      </div>
+      <p class="entry-caption">campione · vetrino circolare</p>
+      <button type="button" class="entry-skip" id="entrySkip">entra</button>
+    </div>
+
+    <main id="slide" aria-label="Vetrino. Muffe e spore in sospensione. Trascina per spostare, scorri per ingrandire.">
+      <canvas id="spores-back" aria-hidden="true"></canvas>
+      <div id="stage"></div>
+      <canvas id="spores-front" aria-hidden="true"></canvas>
+    </main>
+
+    <p class="mark">Muffe <span>vetrino</span></p>
+    <p class="mag" id="mag">4.0×</p>
+    <p class="hint" id="hint">trascina il vetrino · scorri per ingrandire · il cursore ne muove il rilievo</p>
+
+    <div class="controls">
+      <button type="button" id="zoomOut" aria-label="Riduci ingrandimento">−</button>
+      <button type="button" id="zoomIn" aria-label="Aumenta ingrandimento">+</button>
+      <button type="button" id="fitAll" aria-label="Mostra tutte le muffe">tutto</button>
+    </div>
+
+    <noscript>Per osservare il vetrino serve JavaScript.</noscript>
+    <script src="app.js"></script>
+  </body>
+</html>
