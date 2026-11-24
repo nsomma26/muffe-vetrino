@@ -2,7 +2,7 @@
 // A mould grows with the number of case studies in its folder.
 
 const MAX_COUNT = 15;
-const MAX_AREA = 4800 * 4800;
+const MAX_AREA = 5600 * 5600;
 
 function mouldSize(count, nativeW, nativeH) {
   const scale = Math.sqrt((MAX_AREA * (count / MAX_COUNT)) / (nativeW * nativeH));
@@ -53,33 +53,33 @@ function unitRandom(seed) {
 function cardBoxes(spec) {
   const count = spec.cards.length;
   const frame = INTERIOR[spec.src];
-  const rand = unitRandom(hashString(`${spec.src}:spread-v2`));
+  const rand = unitRandom(hashString(`${spec.src}:spread-v3`));
   const aspect = spec.w / spec.h;
-  // Wider photo + short caption — closer to etichetta landscape so they share one scale.
-  const cardRatio = 0.78;
+  // Match real photo+caption footprint so packing gaps match what you see.
+  const cardRatio = 1.05;
   const heightOf = (width) => cardRatio * width * aspect;
-  const gap = 0.28;
+  const gap = 1.8;
   const golden = Math.PI * (3 - Math.sqrt(5));
   const spin = rand() * Math.PI * 2;
 
-  // Seeds across the whole coloured body — rim first, no pale-core clump.
+  // Spread across the whole coloured body — no central pile.
   const seeds = [];
   for (let i = 0; i < count; i += 1) {
-    const t = count === 1 ? 0.22 : (i + 0.55) / (count + 0.05);
-    const reach = Math.sqrt(0.18 + 0.82 * t);
-    const ang = spin + i * golden + (rand() - 0.5) * 0.5;
-    const rx = frame.w * 0.485 * (0.96 + rand() * 0.08);
-    const ry = frame.h * 0.485 * (0.96 + rand() * 0.08);
+    const t = count === 1 ? 0.2 : (i + 0.5) / count;
+    const reach = Math.sqrt(0.2 + 0.8 * t);
+    const ang = spin + i * golden + (rand() - 0.5) * 0.45;
+    const rx = frame.w * 0.46 * (0.95 + rand() * 0.1);
+    const ry = frame.h * 0.46 * (0.95 + rand() * 0.1);
     seeds.push({
       ox: frame.x + frame.w / 2 + Math.cos(ang) * reach * rx,
       oy: frame.y + frame.h / 2 + Math.sin(ang) * reach * ry,
-      weight: 0.98 + rand() * 0.06,
+      weight: 0.97 + rand() * 0.06,
     });
   }
 
   const areaScale = seeds.reduce((sum, seed) => sum + seed.weight * seed.weight, 0);
-  // Fill the mould surface; shrink only if packing fails.
-  const fill = count <= 2 ? 1.1 : count <= 6 ? 1.22 : count <= 11 ? 1.32 : 1.4;
+  // Conservative fill — never force cards larger than the surface can hold.
+  const fill = count <= 2 ? 0.48 : count <= 6 ? 0.52 : count <= 11 ? 0.56 : 0.58;
   let base = Math.sqrt((frame.w * frame.h * fill) / (cardRatio * aspect * areaScale));
 
   const place = (baseWidth) => seeds.map((seed) => {
@@ -94,7 +94,7 @@ function cardBoxes(spec) {
   };
 
   const separate = (cards) => {
-    for (let pass = 0; pass < 80; pass += 1) {
+    for (let pass = 0; pass < 90; pass += 1) {
       let moved = false;
       for (let i = 0; i < count; i += 1) {
         for (let j = i + 1; j < count; j += 1) {
@@ -107,7 +107,6 @@ function cardBoxes(spec) {
           const overlapX = minX - Math.abs(dx);
           const overlapY = minY - Math.abs(dy);
           if (overlapX <= 0 || overlapY <= 0) continue;
-          // Prefer spreading apart along the longer free axis.
           if (overlapX < overlapY) {
             const push = (overlapX / 2) * (Math.sign(dx) || 1);
             a.cx -= push;
@@ -128,14 +127,14 @@ function cardBoxes(spec) {
   const colliding = (cards) => {
     for (let i = 0; i < count; i += 1) {
       const a = cards[i];
-      if (a.cx - a.w / 2 < frame.x - 0.15) return true;
-      if (a.cy - a.h / 2 < frame.y - 0.15) return true;
-      if (a.cx + a.w / 2 > frame.x + frame.w + 0.15) return true;
-      if (a.cy + a.h / 2 > frame.y + frame.h + 0.15) return true;
+      if (a.cx - a.w / 2 < frame.x - 0.05) return true;
+      if (a.cy - a.h / 2 < frame.y - 0.05) return true;
+      if (a.cx + a.w / 2 > frame.x + frame.w + 0.05) return true;
+      if (a.cy + a.h / 2 > frame.y + frame.h + 0.05) return true;
       for (let j = i + 1; j < count; j += 1) {
         const b = cards[j];
-        if (Math.abs(b.cx - a.cx) < (a.w + b.w) / 2 + gap * 0.55
-          && Math.abs(b.cy - a.cy) < (a.h + b.h) / 2 + gap * 0.55) {
+        if (Math.abs(b.cx - a.cx) < (a.w + b.w) / 2 + gap * 0.85
+          && Math.abs(b.cy - a.cy) < (a.h + b.h) / 2 + gap * 0.85) {
           return true;
         }
       }
@@ -145,16 +144,8 @@ function cardBoxes(spec) {
 
   let cards = place(base);
   separate(cards);
-  for (let guard = 0; colliding(cards) && guard < 28; guard += 1) {
-    base *= 0.96;
-    cards = place(base);
-    separate(cards);
-  }
-
-  // Keep cards large even when packing is tight — spread first, shrink last.
-  const minWidth = count <= 2 ? 40 : count <= 6 ? 32 : count <= 11 ? 27 : 25;
-  if (base < minWidth) {
-    base = minWidth;
+  for (let guard = 0; colliding(cards) && guard < 36; guard += 1) {
+    base *= 0.94;
     cards = place(base);
     separate(cards);
   }
@@ -167,22 +158,32 @@ function cardBoxes(spec) {
 }
 
 function arrangeSpecimens() {
-  // Pack muffe almost touching — denser cluster = larger on screen at fit (less white).
+  // Centripetal: largest at the core, five on a ring — sizes unchanged, no overlap.
+  const gap = 1000;
   const center = SPECIMENS[5];
   center.x = -center.w / 2;
   center.y = -center.h / 2;
-  const ring = [
-    [3, -2.35],
-    [2, -1.15],
-    [1, 0.15],
-    [0, 1.45],
-    [4, 2.65],
-  ];
-  for (const [index, ang] of ring) {
+  const ring = [3, 2, 1, 0, 4];
+  let radius = 0;
+  for (const index of ring) {
     const spec = SPECIMENS[index];
-    const dist = (center.w + spec.w) * 0.175 + (center.h + spec.h) * 0.04;
-    spec.x = Math.cos(ang) * dist - spec.w / 2;
-    spec.y = Math.sin(ang) * dist - spec.h / 2;
+    const need =
+      (center.w + spec.w) * 0.5 + (center.h + spec.h) * 0.22 + gap;
+    radius = Math.max(radius, need);
+  }
+  // Keep ring neighbours clear (5 × 72°).
+  const chordFactor = 2 * Math.sin(Math.PI / ring.length);
+  for (let i = 0; i < ring.length; i += 1) {
+    const a = SPECIMENS[ring[i]];
+    const b = SPECIMENS[ring[(i + 1) % ring.length]];
+    const minChord = (a.w + b.w) * 0.5 + (a.h + b.h) * 0.12 + gap;
+    radius = Math.max(radius, minChord / chordFactor);
+  }
+  for (let i = 0; i < ring.length; i += 1) {
+    const ang = -Math.PI / 2 + 0.18 + (i * 2 * Math.PI) / ring.length;
+    const spec = SPECIMENS[ring[i]];
+    spec.x = Math.cos(ang) * radius - spec.w / 2;
+    spec.y = Math.sin(ang) * radius - spec.h / 2;
   }
 }
 
@@ -597,30 +598,38 @@ function layoutLabelSheet(label) {
   const colonyW = colony.clientWidth || 1;
   const colonyH = colony.clientHeight || 1;
   const vw = slide.clientWidth || window.innerWidth;
+  const vh = slide.clientHeight || window.innerHeight;
+  const slideRect = slide.getBoundingClientRect();
   const rect = label.getBoundingClientRect();
   const cardW = rect.width || 1;
-  const cardH = rect.height || 1;
 
-  // Same case, same scale: width stays with the photo, height becomes the table.
-  let sheetW = cardW * 1.06;
-  const fromHeight = cardH * SHEET_ASPECT * 0.98;
-  sheetW = Math.max(sheetW, Math.min(fromHeight, cardW * 1.22));
-  sheetW = Math.min(sheetW, colonyW * 0.9, vw * 0.68, 460);
-  sheetW = Math.max(sheetW, Math.min(cardW, 300));
+  // Full native etichetta — readable, never cropped to fit the muffa box.
+  let sheetW = Math.max(cardW * 1.14, Math.min(vw * 0.52, 400));
+  sheetW = Math.min(Math.max(sheetW, Math.min(360, vw * 0.48)), vw * 0.82, 560);
   const sheetH = sheetW / SHEET_ASPECT;
 
-  // Keep the photo's top-left so the etichetta feels like the same card opening.
   const curLeft = parseFloat(label.style.left) || 0;
   const curTop = parseFloat(label.style.top) || 0;
-  const wPct = (sheetW / colonyW) * 100;
-  const hPct = (sheetH / colonyH) * 100;
-  const left = Math.max(0.4, Math.min(99.2 - wPct, curLeft));
-  const top = Math.max(0.4, Math.min(99.2 - hPct, curTop));
+  label.style.left = `${curLeft}%`;
+  label.style.top = `${curTop}%`;
+  label.style.width = `${(sheetW / colonyW) * 100}%`;
+  label.style.height = `${(sheetH / colonyH) * 100}%`;
 
-  label.style.left = `${left}%`;
-  label.style.top = `${top}%`;
-  label.style.width = `${wPct}%`;
-  label.style.height = `${hPct}%`;
+  // Nudge into the slide so the whole sheet stays on-screen.
+  const after = label.getBoundingClientRect();
+  const pad = 14;
+  let dx = 0;
+  let dy = 0;
+  if (after.right > slideRect.right - pad) dx = slideRect.right - pad - after.right;
+  if (after.left + dx < slideRect.left + pad) dx = slideRect.left + pad - after.left;
+  if (after.bottom > slideRect.bottom - pad) dy = slideRect.bottom - pad - after.bottom;
+  if (after.top + dy < slideRect.top + pad) dy = slideRect.top + pad - after.top;
+  if (sheetH > vh - pad * 2) dy = slideRect.top + pad - after.top;
+  if (dx || dy) {
+    const colonyRect = colony.getBoundingClientRect();
+    label.style.left = `${((after.left + dx - colonyRect.left) / colonyW) * 100}%`;
+    label.style.top = `${((after.top + dy - colonyRect.top) / colonyH) * 100}%`;
+  }
 }
 
 function showLabelSheet(label) {
@@ -672,7 +681,8 @@ function bindLabelHover(label) {
   });
 }
 
-const VIEW_FILL = 0.94;
+// Fit the whole cluster in view — cards stay spaced, no piled zoom.
+const VIEW_FILL = 0.9;
 const LOW_POWER = 4;
 
 const slide = document.querySelector("#slide");
@@ -772,17 +782,18 @@ const colonies = SPECIMENS.map((spec, index) => {
     y: spec.y + spec.h / 2,
     homeX: spec.x + spec.w / 2,
     homeY: spec.y + spec.h / 2,
-    hw: spec.w * 0.5 * 0.5,
-    hh: spec.h * 0.5 * 0.5,
+    // Half-box of the full PNG — separation never lets boxes overlap.
+    hw: spec.w * 0.5,
+    hh: spec.h * 0.5,
     nudgeX: 0,
     nudgeY: 0,
   };
 });
 
-const SEPARATION = 4;
+const SEPARATION = 900;
 
 function separateColonies() {
-  for (let pass = 0; pass < 12; pass += 1) {
+  for (let pass = 0; pass < 48; pass += 1) {
     let moved = false;
     for (let i = 0; i < colonies.length; i += 1) {
       for (let j = i + 1; j < colonies.length; j += 1) {
@@ -792,11 +803,9 @@ function separateColonies() {
         const dy = b.y - a.y;
         const minX = a.hw + b.hw + SEPARATION;
         const minY = a.hh + b.hh + SEPARATION;
-        const absX = Math.abs(dx);
-        const absY = Math.abs(dy);
-        if (absX >= minX || absY >= minY) continue;
-        const overlapX = minX - absX;
-        const overlapY = minY - absY;
+        const overlapX = minX - Math.abs(dx);
+        const overlapY = minY - Math.abs(dy);
+        if (overlapX <= 0 || overlapY <= 0) continue;
         if (overlapX < overlapY) {
           const push = (overlapX / 2) * (Math.sign(dx) || 1);
           a.x -= push;
@@ -825,7 +834,7 @@ function refreshBounds() {
   let maxX = -Infinity;
   let maxY = -Infinity;
   for (const colony of colonies) {
-    const pad = 90;
+    const pad = 40;
     minX = Math.min(minX, colony.homeX - colony.spec.w / 2 - pad);
     minY = Math.min(minY, colony.homeY - colony.spec.h / 2 - pad);
     maxX = Math.max(maxX, colony.homeX + colony.spec.w / 2 + pad);
@@ -858,15 +867,14 @@ let pinch = null;
 function currentFit() {
   const vw = slide.clientWidth || window.innerWidth;
   const vh = slide.clientHeight || window.innerHeight;
-  // Cover the viewport (immersive) instead of letterboxing into a white frame.
-  return Math.max((vw * VIEW_FILL) / bounds.w, (vh * VIEW_FILL) / bounds.h);
+  return Math.min((vw * VIEW_FILL) / bounds.w, (vh * VIEW_FILL) / bounds.h);
 }
 
 function zoomLimits() {
   const fit = currentFit();
   return {
-    min: fit * 0.62,
-    max: Math.max(fit * 1.2, Math.min(5.2, fit * 14)),
+    min: fit * 0.7,
+    max: Math.max(fit * 1.4, Math.min(5.5, fit * 12)),
   };
 }
 
@@ -887,13 +895,15 @@ function paint() {
       colony.el.style.height = `${colony.spec.h * zoom}px`;
       for (const label of colony.el.querySelectorAll(".label")) {
         const cardCss = width * (parseFloat(label.style.width) / 100);
-        const photo = fade(cardCss, 42, 78);
-        const text = fade(cardCss, 130, 200);
+        // Appear only when close enough — overview stays a clean muffa field.
+        const photo = fade(cardCss, 100, 160);
+        const text = fade(cardCss, 170, 240);
         label.style.opacity = photo.toFixed(3);
-        label.style.fontSize = `${Math.min(14, Math.max(11, cardCss * 0.042))}px`;
+        label.style.fontSize = `${Math.min(16, Math.max(12, cardCss * 0.05))}px`;
         const hot = photo > 0.5;
         label.classList.toggle("is-hot", hot);
         if (!hot || zoomingOut || atFit) clearLabelSheet(label);
+        else if (label.classList.contains("is-sheet")) layoutLabelSheet(label);
         for (const line of label.querySelectorAll(".label-title, .label-kind")) {
           line.style.display = text > 0.04 && !label.classList.contains("is-sheet") ? "block" : "none";
           line.style.opacity = text.toFixed(3);
@@ -1337,7 +1347,8 @@ const cover = {
 const patches = [];
 for (let n = 0; n < 2600; n += 1) {
   const roll = rand();
-  const baseR = roll < 0.58 ? 22 + rand() * 26 : roll < 0.88 ? 48 + rand() * 36 : 84 + rand() * 44;
+  // Slightly smaller spores — keep the field dense, just a touch lighter.
+  const baseR = roll < 0.58 ? 19 + rand() * 23 : roll < 0.88 ? 42 + rand() * 32 : 74 + rand() * 38;
   const radius = baseR * sporeWorld;
   const family = rand() < 0.42 ? 0 : rand() < 0.72 ? 1 : 2;
   const pickBox = rand();
@@ -1570,15 +1581,33 @@ const entry = document.querySelector("#entry");
 const entryRig = document.querySelector("#entryRig");
 const entryMap = document.querySelector("#entryMap");
 const entrySpores = document.querySelector("#entrySpores");
-const entryVoid = document.querySelector(".entry-void");
-const entryCaption = document.querySelector(".entry-caption");
+const entryDistance = document.querySelector("#entryDistance");
 const entrySkip = document.querySelector("#entrySkip");
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+let entryDone = false;
+let entryRaf = 0;
+let entryProgress = 0;
+let entrySkipping = false;
+
+function easeInOut(t) {
+  return t * t * (3 - 2 * t);
+}
+
+function mix(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function setEntryDistance(progress) {
+  if (!entryDistance) return;
+  const level = Math.min(4, Math.max(1, 1 + Math.floor(progress * 3.99)));
+  entryDistance.textContent = `distanza 0${level}`;
+}
 
 function buildEntryMap() {
   if (!entryMap) return;
   entryMap.replaceChildren();
-  const pad = 0.06;
+  const pad = 0.08;
   const spanW = bounds.w || 1;
   const spanH = bounds.h || 1;
   for (const colony of colonies) {
@@ -1610,21 +1639,19 @@ function paintEntrySpores() {
   ctx.clearRect(0, 0, size, size);
   ctx.imageSmoothingEnabled = false;
 
-  const pad = 0.06;
-  const mapFrac = 0.78;
-  const mapOrigin = (1 - mapFrac) / 2;
+  const pad = 0.08;
+  const mapFrac = 1;
   const spanW = bounds.w || 1;
   const spanH = bounds.h || 1;
   const usable = mapFrac * (1 - pad * 2);
-
-  const toCanvas = (wx, wy) => ({
-    x: (mapOrigin + (pad + ((wx - bounds.x) / spanW) * (1 - pad * 2)) * mapFrac) * size,
-    y: (mapOrigin + (pad + ((wy - bounds.y) / spanH) * (1 - pad * 2)) * mapFrac) * size,
-  });
-
-  const limit = (size * 0.485) ** 2;
   const cx = size / 2;
   const cy = size / 2;
+  const limit = (size * 0.49) ** 2;
+
+  const toCanvas = (wx, wy) => ({
+    x: (pad + ((wx - bounds.x) / spanW) * (1 - pad * 2)) * size,
+    y: (pad + ((wy - bounds.y) / spanH) * (1 - pad * 2)) * size,
+  });
 
   const drawSporeAt = (patch, x, y, dw) => {
     const dx = x - cx;
@@ -1636,18 +1663,15 @@ function paintEntrySpores() {
 
   for (const patch of patches) {
     const point = toCanvas(patch.ox, patch.oy);
-    const dw = Math.max(1.2, (patch.radius * 2 / spanW) * usable * size);
+    const dw = Math.max(1.4, (patch.radius * 2 / spanW) * usable * size);
     drawSporeAt(patch, point.x, point.y, dw);
   }
 
-  // Fill the rest of the circular glass, not only the central bounds square.
-  const rim = 520;
-  for (let i = 0; i < rim; i += 1) {
+  for (let i = 0; i < 420; i += 1) {
     const patch = patches[i % patches.length];
     const ang = rand() * Math.PI * 2;
-    const rad = Math.sqrt(rand()) * size * 0.47;
-    const dw = Math.max(1.4, 3 + rand() * 16);
-    drawSporeAt(patch, cx + Math.cos(ang) * rad, cy + Math.sin(ang) * rad, dw);
+    const rad = Math.sqrt(rand()) * size * 0.48;
+    drawSporeAt(patch, cx + Math.cos(ang) * rad, cy + Math.sin(ang) * rad, Math.max(1.6, 4 + rand() * 18));
   }
 
   ctx.globalCompositeOperation = "destination-out";
@@ -1662,87 +1686,54 @@ function paintEntrySpores() {
   ctx.globalCompositeOperation = "source-over";
 }
 
-function easeInOut(t) {
-  return t * t * (3 - 2 * t);
-}
+function paintEntry(progress) {
+  if (!entryRig) return;
+  entryProgress = progress;
+  setEntryDistance(progress);
 
-function mix(a, b, t) {
-  return a + (b - a) * t;
-}
+  // Approach the specimen: float in, then push into the glass.
+  const settle = easeInOut(Math.min(1, progress / 0.28));
+  const approach = easeInOut(Math.max(0, (progress - 0.18) / 0.62));
+  const dissolve = easeInOut(Math.max(0, (progress - 0.78) / 0.22));
+  const scale = mix(0.78, mix(1.05, 1.72, approach), settle);
+  const driftY = mix(28, mix(0, -18, approach), settle);
+  const sway = progress < 0.3 && !reduceMotion ? Math.sin(progress * 22) * 1.4 * (1 - settle) : 0;
 
-function hexMix(a, b, t) {
-  const parse = (hex) => [
-    parseInt(hex.slice(1, 3), 16),
-    parseInt(hex.slice(3, 5), 16),
-    parseInt(hex.slice(5, 7), 16),
-  ];
-  const A = parse(a);
-  const B = parse(b);
-  const c = A.map((v, i) => Math.round(mix(v, B[i], t)));
-  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
-}
+  entryRig.style.transform =
+    `translate3d(${sway}px, ${driftY}px, 0) scale(${scale})`;
+  entryRig.style.opacity = String(1 - dissolve * 0.92);
 
-let entryDone = false;
-let entryRaf = 0;
-let entryProgress = 0;
-let entrySkipping = false;
+  const shadow = document.querySelector(".entry-shadow");
+  if (shadow) shadow.style.opacity = String(Math.max(0.15, 0.9 - approach * 0.45 - dissolve));
+}
 
 function finishEntry() {
   if (entryDone) return;
   entryDone = true;
-  entryProgress = 1;
   if (entryRaf) cancelAnimationFrame(entryRaf);
   paintEntry(1);
   document.body.classList.remove("is-entering");
   document.body.classList.add("is-live");
   slide.classList.add("is-ready");
-  if (entry) entry.classList.add("is-done");
+  if (entry) {
+    entry.classList.add("is-done");
+    entry.setAttribute("aria-hidden", "true");
+  }
   fit();
   setTimeout(hideHint, 7000);
   setTimeout(() => {
     if (entry && entry.parentNode) entry.remove();
-  }, 900);
-}
-
-function paintEntry(progress) {
-  if (!entryRig) return;
-  entryProgress = progress;
-  // Hold the side view, then rise to top, then open into the live slide.
-  const hold = 0.18;
-  const riseEnd = 0.78;
-  const riseT = progress <= hold ? 0 : Math.min(1, (progress - hold) / (riseEnd - hold));
-  const lift = easeInOut(riseT);
-  const open = easeInOut(Math.max(0, (progress - 0.7) / 0.3));
-  const rotateX = mix(72, 0, lift);
-  const rotateY = mix(-22, 0, lift);
-  const rotateZ = mix(10, 0, lift);
-  const scale = mix(0.84, mix(1.05, 1.62, open), lift);
-  const raise = mix(48, 0, lift);
-  const sway = progress < hold ? Math.sin(progress * 18) * 1.2 : 0;
-  entryRig.style.transform =
-    `translate3d(0, ${raise}px, 0) rotateX(${rotateX + sway}deg) rotateY(${rotateY}deg) rotateZ(${rotateZ}deg) scale(${scale})`;
-
-  if (entryVoid) {
-    const soft = easeInOut(Math.max(0, (progress - 0.5) / 0.5));
-    entryVoid.style.background =
-      `radial-gradient(ellipse 75% 58% at 50% 46%, ${hexMix("#1a221c", "#ffffff", soft)} 0%, ${hexMix("#0c100e", "#ffffff", soft)} 58%, ${hexMix("#070908", "#ffffff", soft)} 100%)`;
-  }
-  if (entryCaption) entryCaption.style.opacity = String(Math.max(0, 1 - Math.max(0, progress - 0.12) * 1.6));
-  const band = document.querySelector(".entry-band");
-  const shadow = document.querySelector(".entry-shadow");
-  // Thickness rim only while the disc is still seen from the side.
-  if (band) band.style.opacity = String(Math.max(0, (1 - lift) ** 2.2 * 0.95));
-  if (shadow) shadow.style.opacity = String(Math.max(0, 0.9 - open) * (1 - lift * 0.35));
+  }, 950);
 }
 
 function playEntry() {
   buildEntryMap();
-  if (reduceMotion || !entry || !entryRig) {
+  if (!entry || !entryRig || reduceMotion) {
     finishEntry();
     return;
   }
 
-  const duration = 6400;
+  const duration = 5600;
   const start = performance.now();
   paintEntry(0);
 
@@ -1757,6 +1748,10 @@ function playEntry() {
     finishEntry();
   };
   entryRaf = requestAnimationFrame(step);
+  // Safety: always enter the live slide even if the animation loop stalls.
+  setTimeout(() => {
+    if (!entryDone) finishEntry();
+  }, duration + 800);
 }
 
 function skipEntry() {
@@ -1767,7 +1762,7 @@ function skipEntry() {
   const from = entryProgress;
   const step = (now) => {
     if (entryDone) return;
-    const t = Math.min(1, (now - start) / 480);
+    const t = Math.min(1, (now - start) / 520);
     paintEntry(mix(from, 1, easeInOut(t)));
     if (t < 1) {
       entryRaf = requestAnimationFrame(step);
@@ -1806,7 +1801,7 @@ Promise.race([
         })
     )
   ),
-  new Promise((resolve) => setTimeout(resolve, 2500)),
+  new Promise((resolve) => setTimeout(resolve, 2200)),
 ]).then(() => {
   playEntry();
 });
