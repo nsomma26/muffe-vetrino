@@ -2,7 +2,7 @@
 // A mould grows with the number of case studies in its folder.
 
 const MAX_COUNT = 15;
-const MAX_AREA = 3200 * 3200;
+const MAX_AREA = 4800 * 4800;
 
 function mouldSize(count, nativeW, nativeH) {
   const scale = Math.sqrt((MAX_AREA * (count / MAX_COUNT)) / (nativeW * nativeH));
@@ -21,14 +21,14 @@ function placed(src, nativeW, nativeH, count, cx, cy, cards) {
   };
 }
 
-// Solid interior of each colony bitmap, inset so a card corner stays on colour.
+// Coloured body of each colony — includes cyan/green rings, not only the pale core.
 const INTERIOR = {
-  "assets/muffa-04.png": { x: 9.0, y: 18.0, w: 55.0, h: 66.0 },
-  "assets/muffa-03.png": { x: 38.5, y: 17.5, w: 53.0, h: 56.0 },
-  "assets/muffa-07.png": { x: 11.5, y: 18.0, w: 63.5, h: 48.5 },
-  "assets/muffa-06.png": { x: 12.5, y: 26.0, w: 52.0, h: 58.0 },
-  "assets/muffa-05.png": { x: 10.5, y: 22.0, w: 67.0, h: 53.5 },
-  "assets/muffa-02.png": { x: 18.0, y: 14.0, w: 63.0, h: 64.0 },
+  "assets/muffa-04.png": { x: 4.0, y: 8.0, w: 76.0, h: 84.0 },
+  "assets/muffa-03.png": { x: 24.0, y: 8.0, w: 72.0, h: 78.0 },
+  "assets/muffa-07.png": { x: 4.5, y: 8.0, w: 84.0, h: 70.0 },
+  "assets/muffa-06.png": { x: 4.5, y: 10.0, w: 76.0, h: 80.0 },
+  "assets/muffa-05.png": { x: 3.5, y: 8.0, w: 88.0, h: 78.0 },
+  "assets/muffa-02.png": { x: 5.0, y: 4.5, w: 88.0, h: 90.0 },
 };
 
 function hashString(value) {
@@ -53,32 +53,34 @@ function unitRandom(seed) {
 function cardBoxes(spec) {
   const count = spec.cards.length;
   const frame = INTERIOR[spec.src];
-  const rand = unitRandom(hashString(`${spec.src}:spread`));
+  const rand = unitRandom(hashString(`${spec.src}:spread-v2`));
   const aspect = spec.w / spec.h;
-  // Photo + caption height in mould-percentage space (must match real label growth).
-  const heightOf = (width) => 1.12 * width * aspect;
-  const gap = 1.0;
+  // Wider photo + short caption — closer to etichetta landscape so they share one scale.
+  const cardRatio = 0.78;
+  const heightOf = (width) => cardRatio * width * aspect;
+  const gap = 0.28;
   const golden = Math.PI * (3 - Math.sqrt(5));
   const spin = rand() * Math.PI * 2;
 
-  // Seeds cover the whole interior, from near the rim inward — no central clump.
+  // Seeds across the whole coloured body — rim first, no pale-core clump.
   const seeds = [];
   for (let i = 0; i < count; i += 1) {
-    const reach = count === 1 ? 0.12 : Math.sqrt((i + 0.35) / (count + 0.2));
-    const ang = spin + i * golden + (rand() - 0.5) * 0.35;
+    const t = count === 1 ? 0.22 : (i + 0.55) / (count + 0.05);
+    const reach = Math.sqrt(0.18 + 0.82 * t);
+    const ang = spin + i * golden + (rand() - 0.5) * 0.5;
+    const rx = frame.w * 0.485 * (0.96 + rand() * 0.08);
+    const ry = frame.h * 0.485 * (0.96 + rand() * 0.08);
     seeds.push({
-      ox: frame.x + frame.w / 2
-        + Math.cos(ang) * reach * frame.w * 0.48 * (0.9 + rand() * 0.2),
-      oy: frame.y + frame.h / 2
-        + Math.sin(ang) * reach * frame.h * 0.48 * (0.9 + rand() * 0.2),
-      weight: 0.94 + rand() * 0.12,
+      ox: frame.x + frame.w / 2 + Math.cos(ang) * reach * rx,
+      oy: frame.y + frame.h / 2 + Math.sin(ang) * reach * ry,
+      weight: 0.98 + rand() * 0.06,
     });
   }
 
   const areaScale = seeds.reduce((sum, seed) => sum + seed.weight * seed.weight, 0);
-  // Use most of the mould surface without forcing a central clump.
-  const fill = count <= 2 ? 0.72 : count <= 6 ? 0.8 : 0.86;
-  let base = Math.sqrt((frame.w * frame.h * fill) / (1.12 * aspect * areaScale));
+  // Fill the mould surface; shrink only if packing fails.
+  const fill = count <= 2 ? 1.1 : count <= 6 ? 1.22 : count <= 11 ? 1.32 : 1.4;
+  let base = Math.sqrt((frame.w * frame.h * fill) / (cardRatio * aspect * areaScale));
 
   const place = (baseWidth) => seeds.map((seed) => {
     const w = baseWidth * seed.weight;
@@ -92,7 +94,7 @@ function cardBoxes(spec) {
   };
 
   const separate = (cards) => {
-    for (let pass = 0; pass < 60; pass += 1) {
+    for (let pass = 0; pass < 80; pass += 1) {
       let moved = false;
       for (let i = 0; i < count; i += 1) {
         for (let j = i + 1; j < count; j += 1) {
@@ -126,14 +128,14 @@ function cardBoxes(spec) {
   const colliding = (cards) => {
     for (let i = 0; i < count; i += 1) {
       const a = cards[i];
-      if (a.cx - a.w / 2 < frame.x - 0.1) return true;
-      if (a.cy - a.h / 2 < frame.y - 0.1) return true;
-      if (a.cx + a.w / 2 > frame.x + frame.w + 0.1) return true;
-      if (a.cy + a.h / 2 > frame.y + frame.h + 0.1) return true;
+      if (a.cx - a.w / 2 < frame.x - 0.15) return true;
+      if (a.cy - a.h / 2 < frame.y - 0.15) return true;
+      if (a.cx + a.w / 2 > frame.x + frame.w + 0.15) return true;
+      if (a.cy + a.h / 2 > frame.y + frame.h + 0.15) return true;
       for (let j = i + 1; j < count; j += 1) {
         const b = cards[j];
-        if (Math.abs(b.cx - a.cx) < (a.w + b.w) / 2 + gap * 0.7
-          && Math.abs(b.cy - a.cy) < (a.h + b.h) / 2 + gap * 0.7) {
+        if (Math.abs(b.cx - a.cx) < (a.w + b.w) / 2 + gap * 0.55
+          && Math.abs(b.cy - a.cy) < (a.h + b.h) / 2 + gap * 0.55) {
           return true;
         }
       }
@@ -143,8 +145,16 @@ function cardBoxes(spec) {
 
   let cards = place(base);
   separate(cards);
-  for (let guard = 0; colliding(cards) && guard < 18; guard += 1) {
-    base *= 0.93;
+  for (let guard = 0; colliding(cards) && guard < 28; guard += 1) {
+    base *= 0.96;
+    cards = place(base);
+    separate(cards);
+  }
+
+  // Keep cards large even when packing is tight — spread first, shrink last.
+  const minWidth = count <= 2 ? 40 : count <= 6 ? 32 : count <= 11 ? 27 : 25;
+  if (base < minWidth) {
+    base = minWidth;
     cards = place(base);
     separate(cards);
   }
@@ -157,21 +167,22 @@ function cardBoxes(spec) {
 }
 
 function arrangeSpecimens() {
+  // Pack muffe almost touching — denser cluster = larger on screen at fit (less white).
   const center = SPECIMENS[5];
-  const scale = ((center.w * 0.35) / 278) * 1.14;
-  const around = [
-    [3, -498, -291],
-    [2, 177, -551],
-    [1, 420, 460],
-    [0, 24, 589],
-    [4, -486, 428],
-  ];
   center.x = -center.w / 2;
   center.y = -center.h / 2;
-  for (const [index, dx, dy] of around) {
+  const ring = [
+    [3, -2.35],
+    [2, -1.15],
+    [1, 0.15],
+    [0, 1.45],
+    [4, 2.65],
+  ];
+  for (const [index, ang] of ring) {
     const spec = SPECIMENS[index];
-    spec.x = dx * scale - spec.w / 2;
-    spec.y = dy * scale - spec.h / 2;
+    const dist = (center.w + spec.w) * 0.175 + (center.h + spec.h) * 0.04;
+    spec.x = Math.cos(ang) * dist - spec.w / 2;
+    spec.y = Math.sin(ang) * dist - spec.h / 2;
   }
 }
 
@@ -427,7 +438,241 @@ const SPECIMENS = [
 
 arrangeSpecimens();
 
-const VIEW_FILL = 0.84;
+function normTitle(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+const SHEET_ALIAS = {
+  [normTitle("WRAP: The Food Waste")]: normTitle("WRAP: The Food We Waste"),
+  [normTitle("Love Food Hate Waste")]: normTitle("Love Food Hate Waste: nuove creatività"),
+  [normTitle("Dalla bag al beneficio ambientale")]: normTitle(
+    "Modello aziendale: dalla bag al beneficio ambientale"
+  ),
+  [normTitle("Recupero o spostamento dello spreco?")]: normTitle(
+    "Modello: recupero o spostamento dello spreco?"
+  ),
+};
+
+const SHEET_FILES = [
+  "AF01_Amazon_Fresh_sconta_prodotti_a_breve_scadenza.svg",
+  "AF02_Amazon_Fresh_diversione_organica_nei_negozi.svg",
+  "AF03_Amazon_Fresh_aderisce_al_Food_Waste_Pact.svg",
+  "AU01_Spesa_online_e_spreco_domestico_in_Australia.svg",
+  "U01_Love_Food_Hate_Waste_Crying_Pear.svg",
+  "U02_WRAP_The_Food_We_Waste.svg",
+  "U03_Love_Food_Hate_Waste_nuove_creativit.svg",
+  "U04_Epic_Meal_Time_Fast_Food_Pizza.svg",
+  "U05_Taste_the_Waste.svg",
+  "U07_Think_Eat_Save.svg",
+  "U08_Blogilates_What_I_Eat_in_a_Day.svg",
+  "U09_Intermarch_Inglorious_Fruits_and_Vegetables.svg",
+  "U10_YouTubers_React_to_Mukbang.svg",
+  "U12_Lancio_del_marketplace_Too_Good_To_Go.svg",
+  "U14_Twitch_riconosce_Social_Eating.svg",
+  "U15_Mizijun_dieci_confezioni_di_noodles.svg",
+  "U16_Messaggi_antispreco_di_un_retailer.svg",
+  "U17_BuzzFeed_una_settimana_senza_sprecare_cibo.svg",
+  "U18_Too_Good_To_Go_arriva_in_Italia.svg",
+  "U19_Emily_Canham_e_le_24_ore_di_avanzi.svg",
+  "U20_WUR_studio_sulle_Magic_Box.svg",
+  "U21_Ricezione_del_mukbang_su_YouTube_e_Reddit.svg",
+  "U23_Too_Good_To_Go_Food_Unboxed.svg",
+  "U24_Legge_cinese_contro_lo_spreco_alimentare.svg",
+  "U25_Emily_Mariko_salmon_rice_bowl.svg",
+  "U26_Community_Too_Good_To_Go_su_Facebook.svg",
+  "U28_Unboxing_e_tutorial_come_marketing.svg",
+  "U29_Revisione_degli_studi_sulle_campagne_social.svg",
+  "U30_Ally_la_bag_con_torta.svg",
+  "U32_Analisi_di_video_What_I_Eat_in_a_Day.svg",
+  "U33_Whole_Foods_rollout_nazionale_con_TGTG.svg",
+  "U34_Esperimento_di_esposizione_a_food_diary.svg",
+  "U35_Modello_aziendale_dalla_bag_al_beneficio_ambientale.svg",
+  "U36_UNEP_dove_si_genera_lo_spreco.svg",
+  "U37_Too_Good_To_Go_Settimana_Zero_Sprechi.svg",
+  "U38_Modello_recupero_o_spostamento_dello_spreco.svg",
+  "U39_WUR_mangiare_conservare_condividere_scartare.svg",
+  "U40_Ellie_bag_di_salmone_Whole_Foods.svg",
+  "U41_Waste_Watcher_serie_italiana.svg",
+  "U42_Dati_Too_Good_To_Go_Italia_sul_2025.svg",
+  "U48_Avvisi_e_sanzioni_delle_piattaforme.svg",
+];
+
+const SHEET_BY_KEY = {};
+for (const file of SHEET_FILES) {
+  const stem = file.replace(/\.svg$/i, "");
+  const named = stem.replace(/^[A-Z]+\d+_/, "").replace(/_/g, " ");
+  SHEET_BY_KEY[normTitle(named)] = `etichette di ogni foto/${file}`;
+}
+// Explicit title keys from the SVG <title> bodies.
+SHEET_BY_KEY[normTitle("WRAP: The Food We Waste")] = "etichette di ogni foto/U02_WRAP_The_Food_We_Waste.svg";
+SHEET_BY_KEY[normTitle("Love Food Hate Waste: Crying Pear")] =
+  "etichette di ogni foto/U01_Love_Food_Hate_Waste_Crying_Pear.svg";
+SHEET_BY_KEY[normTitle("Love Food Hate Waste: nuove creatività")] =
+  "etichette di ogni foto/U03_Love_Food_Hate_Waste_nuove_creativit.svg";
+SHEET_BY_KEY[normTitle("Intermarché: Inglorious Fruits and Vegetables")] =
+  "etichette di ogni foto/U09_Intermarch_Inglorious_Fruits_and_Vegetables.svg";
+SHEET_BY_KEY[normTitle("Modello aziendale: dalla bag al beneficio ambientale")] =
+  "etichette di ogni foto/U35_Modello_aziendale_dalla_bag_al_beneficio_ambientale.svg";
+SHEET_BY_KEY[normTitle("Modello: recupero o spostamento dello spreco?")] =
+  "etichette di ogni foto/U38_Modello_recupero_o_spostamento_dello_spreco.svg";
+
+function sheetForTitle(title) {
+  const key = normTitle(title);
+  const aliased = SHEET_ALIAS[key] || key;
+  if (SHEET_BY_KEY[aliased]) return SHEET_BY_KEY[aliased];
+  if (SHEET_BY_KEY[key]) return SHEET_BY_KEY[key];
+  for (const [candidate, path] of Object.entries(SHEET_BY_KEY)) {
+    if (candidate.includes(key) || key.includes(candidate)) return path;
+  }
+  return "";
+}
+
+for (const spec of SPECIMENS) {
+  for (const card of spec.cards) {
+    card.sheet = sheetForTitle(card.title);
+  }
+}
+
+const HOVER_SHOW_MS = 1800;
+const HOVER_HIDE_MS = 650;
+// Native etichette SVG are 285×112 — keep sheet size tied to the photo card.
+const SHEET_NATIVE_W = 285;
+const SHEET_NATIVE_H = 112;
+const SHEET_ASPECT = SHEET_NATIVE_W / SHEET_NATIVE_H;
+
+function buildFallbackSheet(card) {
+  const wrap = document.createElement("div");
+  wrap.className = "label-sheet-fallback";
+  const head = document.createElement("p");
+  head.className = "sheet-head";
+  head.textContent = card.title;
+  const rows = [
+    ["Media", card.kind || "—"],
+    ["Paese", card.country || "—"],
+    ["Anno", card.year || "—"],
+    ["Impatto sul pubblico", card.impact || "Scheda caso studio."],
+  ];
+  wrap.appendChild(head);
+  for (const [key, value] of rows) {
+    const row = document.createElement("div");
+    row.className = "sheet-row";
+    const k = document.createElement("p");
+    k.className = "sheet-key";
+    k.textContent = key;
+    const v = document.createElement("p");
+    v.className = "sheet-val";
+    v.textContent = value;
+    row.append(k, v);
+    wrap.appendChild(row);
+  }
+  return wrap;
+}
+
+function rememberLabelLayout(label) {
+  if (label._baseLayout) return;
+  label._baseLayout = {
+    left: label.style.left,
+    top: label.style.top,
+    width: label.style.width,
+    height: label.style.height || "",
+  };
+}
+
+function restoreLabelLayout(label) {
+  if (!label._baseLayout) return;
+  label.style.left = label._baseLayout.left;
+  label.style.top = label._baseLayout.top;
+  label.style.width = label._baseLayout.width;
+  label.style.height = label._baseLayout.height;
+  label._baseLayout = null;
+}
+
+function layoutLabelSheet(label) {
+  rememberLabelLayout(label);
+  const colony = label.parentElement;
+  const colonyW = colony.clientWidth || 1;
+  const colonyH = colony.clientHeight || 1;
+  const vw = slide.clientWidth || window.innerWidth;
+  const rect = label.getBoundingClientRect();
+  const cardW = rect.width || 1;
+  const cardH = rect.height || 1;
+
+  // Same case, same scale: width stays with the photo, height becomes the table.
+  let sheetW = cardW * 1.06;
+  const fromHeight = cardH * SHEET_ASPECT * 0.98;
+  sheetW = Math.max(sheetW, Math.min(fromHeight, cardW * 1.22));
+  sheetW = Math.min(sheetW, colonyW * 0.9, vw * 0.68, 460);
+  sheetW = Math.max(sheetW, Math.min(cardW, 300));
+  const sheetH = sheetW / SHEET_ASPECT;
+
+  // Keep the photo's top-left so the etichetta feels like the same card opening.
+  const curLeft = parseFloat(label.style.left) || 0;
+  const curTop = parseFloat(label.style.top) || 0;
+  const wPct = (sheetW / colonyW) * 100;
+  const hPct = (sheetH / colonyH) * 100;
+  const left = Math.max(0.4, Math.min(99.2 - wPct, curLeft));
+  const top = Math.max(0.4, Math.min(99.2 - hPct, curTop));
+
+  label.style.left = `${left}%`;
+  label.style.top = `${top}%`;
+  label.style.width = `${wPct}%`;
+  label.style.height = `${hPct}%`;
+}
+
+function showLabelSheet(label) {
+  if (label.classList.contains("is-sheet")) return;
+  layoutLabelSheet(label);
+  label.classList.add("is-sheet");
+}
+
+function clearLabelSheet(label) {
+  const wasSheet = label.classList.contains("is-sheet");
+  label.classList.remove("is-sheet");
+  if (wasSheet) restoreLabelLayout(label);
+  if (label._showTimer) {
+    clearTimeout(label._showTimer);
+    label._showTimer = 0;
+  }
+  if (label._hideTimer) {
+    clearTimeout(label._hideTimer);
+    label._hideTimer = 0;
+  }
+}
+
+function bindLabelHover(label) {
+  label.addEventListener("pointerdown", (event) => {
+    if (!label.classList.contains("is-hot")) return;
+    event.stopPropagation();
+  });
+  label.addEventListener("pointerenter", () => {
+    if (!label.classList.contains("is-hot")) return;
+    if (label._hideTimer) {
+      clearTimeout(label._hideTimer);
+      label._hideTimer = 0;
+    }
+    if (label.classList.contains("is-sheet")) return;
+    label._showTimer = setTimeout(() => {
+      showLabelSheet(label);
+      label._showTimer = 0;
+    }, HOVER_SHOW_MS);
+  });
+  label.addEventListener("pointerleave", () => {
+    if (label._showTimer) {
+      clearTimeout(label._showTimer);
+      label._showTimer = 0;
+    }
+    if (!label.classList.contains("is-sheet")) return;
+    label._hideTimer = setTimeout(() => {
+      clearLabelSheet(label);
+    }, HOVER_HIDE_MS);
+  });
+}
+
+const VIEW_FILL = 0.94;
 const LOW_POWER = 4;
 
 const slide = document.querySelector("#slide");
@@ -496,7 +741,21 @@ const colonies = SPECIMENS.map((spec, index) => {
     const kind = document.createElement("p");
     kind.className = "label-kind";
     kind.textContent = card.kind;
-    label.append(photo, title, kind);
+    const sheet = document.createElement("div");
+    sheet.className = "label-sheet";
+    if (card.sheet) {
+      const sheetImg = new Image();
+      sheetImg.className = "label-sheet-img";
+      sheetImg.src = encodeURI(card.sheet);
+      sheetImg.alt = card.title;
+      sheetImg.draggable = false;
+      sheetImg.decoding = "async";
+      sheet.appendChild(sheetImg);
+    } else {
+      sheet.appendChild(buildFallbackSheet(card));
+    }
+    label.append(photo, title, kind, sheet);
+    bindLabelHover(label);
     el.appendChild(label);
   });
   stage.appendChild(el);
@@ -513,14 +772,14 @@ const colonies = SPECIMENS.map((spec, index) => {
     y: spec.y + spec.h / 2,
     homeX: spec.x + spec.w / 2,
     homeY: spec.y + spec.h / 2,
-    hw: spec.w * 0.7 * 0.5,
-    hh: spec.h * 0.7 * 0.5,
+    hw: spec.w * 0.5 * 0.5,
+    hh: spec.h * 0.5 * 0.5,
     nudgeX: 0,
     nudgeY: 0,
   };
 });
 
-const SEPARATION = 28;
+const SEPARATION = 4;
 
 function separateColonies() {
   for (let pass = 0; pass < 12; pass += 1) {
@@ -599,7 +858,8 @@ let pinch = null;
 function currentFit() {
   const vw = slide.clientWidth || window.innerWidth;
   const vh = slide.clientHeight || window.innerHeight;
-  return Math.min((vw * VIEW_FILL) / bounds.w, (vh * VIEW_FILL) / bounds.h);
+  // Cover the viewport (immersive) instead of letterboxing into a white frame.
+  return Math.max((vw * VIEW_FILL) / bounds.w, (vh * VIEW_FILL) / bounds.h);
 }
 
 function zoomLimits() {
@@ -619,6 +879,7 @@ function paint() {
   stage.style.transform = `translate3d(${panX}px, ${panY}px, 0)`;
 
   if (zoom !== laidOutZoom) {
+    const zoomingOut = zoom < laidOutZoom;
     laidOutZoom = zoom;
     for (const colony of colonies) {
       const width = colony.spec.w * zoom;
@@ -626,12 +887,15 @@ function paint() {
       colony.el.style.height = `${colony.spec.h * zoom}px`;
       for (const label of colony.el.querySelectorAll(".label")) {
         const cardCss = width * (parseFloat(label.style.width) / 100);
-        const photo = fade(cardCss, 34, 62);
-        const text = fade(cardCss, 120, 175);
+        const photo = fade(cardCss, 42, 78);
+        const text = fade(cardCss, 130, 200);
         label.style.opacity = photo.toFixed(3);
-        label.style.fontSize = `${Math.min(13, Math.max(10, cardCss * 0.048))}px`;
+        label.style.fontSize = `${Math.min(14, Math.max(11, cardCss * 0.042))}px`;
+        const hot = photo > 0.5;
+        label.classList.toggle("is-hot", hot);
+        if (!hot || zoomingOut || atFit) clearLabelSheet(label);
         for (const line of label.querySelectorAll(".label-title, .label-kind")) {
-          line.style.display = text > 0.04 ? "block" : "none";
+          line.style.display = text > 0.04 && !label.classList.contains("is-sheet") ? "block" : "none";
           line.style.opacity = text.toFixed(3);
         }
       }
@@ -971,12 +1235,15 @@ function pick(list) {
 
 const dust = [];
 const span = Math.max(bounds.w, bounds.h);
+// Keep spore on-screen size stable when the world span changes (fit zoom ≈ 1/span).
+const SPORE_SPAN_REF = 3200;
+const sporeWorld = span / SPORE_SPAN_REF;
 // Square glass large enough for wide viewports at fit and minimum zoom.
 const glass = {
-  x: bounds.x + bounds.w / 2 - span * 2.2,
-  y: bounds.y + bounds.h / 2 - span * 2.2,
-  w: span * 4.4,
-  h: span * 4.4,
+  x: bounds.x + bounds.w / 2 - span * 1.6,
+  y: bounds.y + bounds.h / 2 - span * 1.6,
+  w: span * 3.2,
+  h: span * 3.2,
 };
 const CORE = [
   [232, 240, 226],
@@ -1056,24 +1323,25 @@ function bakeSpore(radius, family) {
 }
 
 const field = {
-  x: bounds.x - bounds.w * 0.45,
-  y: bounds.y - bounds.h * 0.45,
-  w: bounds.w * 1.9,
-  h: bounds.h * 1.9,
+  x: bounds.x - bounds.w * 0.28,
+  y: bounds.y - bounds.h * 0.28,
+  w: bounds.w * 1.56,
+  h: bounds.h * 1.56,
 };
 const cover = {
-  x: bounds.x + bounds.w / 2 - span * 1.55,
-  y: bounds.y + bounds.h / 2 - span * 1.55,
-  w: span * 3.1,
-  h: span * 3.1,
+  x: bounds.x + bounds.w / 2 - span * 1.15,
+  y: bounds.y + bounds.h / 2 - span * 1.15,
+  w: span * 2.3,
+  h: span * 2.3,
 };
 const patches = [];
 for (let n = 0; n < 2600; n += 1) {
   const roll = rand();
-  const radius = roll < 0.58 ? 14 + rand() * 16 : roll < 0.88 ? 30 + rand() * 24 : 54 + rand() * 28;
+  const baseR = roll < 0.58 ? 22 + rand() * 26 : roll < 0.88 ? 48 + rand() * 36 : 84 + rand() * 44;
+  const radius = baseR * sporeWorld;
   const family = rand() < 0.42 ? 0 : rand() < 0.72 ? 1 : 2;
   const pickBox = rand();
-  const box = pickBox < 0.62 ? cover : pickBox < 0.84 ? field : glass;
+  const box = pickBox < 0.7 ? cover : pickBox < 0.9 ? field : glass;
   const x = box.x + rand() * box.w;
   const y = box.y + rand() * box.h;
   patches.push({
