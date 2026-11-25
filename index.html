@@ -37,6 +37,14 @@
     <p class="mag" id="mag">4.0×</p>
     <p class="hint" id="hint">trascina il vetrino · scorri per ingrandire · il cursore ne muove il rilievo</p>
 
+    <div class="timeline" id="timeline" aria-label="Linea temporale dei casi">
+      <div class="timeline-track" id="timelineTrack">
+        <div class="timeline-years" id="timelineYears" aria-hidden="true"></div>
+        <button type="button" class="timeline-cursor" id="timelineCursor" aria-label="Seleziona anno"></button>
+      </div>
+      <p class="timeline-readout" id="timelineReadout">tutti</p>
+    </div>
+
     <div class="controls">
       <button type="button" id="zoomOut" aria-label="Riduci ingrandimento">−</button>
       <button type="button" id="zoomIn" aria-label="Aumenta ingrandimento">+</button>

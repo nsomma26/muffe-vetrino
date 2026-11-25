@@ -2,14 +2,16 @@
 // A mould grows with the number of case studies in its folder.
 
 const MAX_COUNT = 15;
-const MAX_AREA = 5600 * 5600;
+const MAX_AREA = 8200 * 8200;
 
 function mouldSize(count, nativeW, nativeH) {
-  const scale = Math.sqrt((MAX_AREA * (count / MAX_COUNT)) / (nativeW * nativeH));
+  // Grow with cases; soft floor so sparse channels aren't tiny on the slide.
+  const weight = count <= 2 ? count + 3 : count <= 5 ? count + 1.5 : count;
+  const scale = Math.sqrt((MAX_AREA * (weight / MAX_COUNT)) / (nativeW * nativeH));
   return { w: nativeW * scale, h: nativeH * scale };
 }
 
-function placed(src, nativeW, nativeH, count, cx, cy, cards) {
+function placed(src, nativeW, nativeH, count, cx, cy, cards, rot = 0) {
   const size = mouldSize(count, nativeW, nativeH);
   return {
     src,
@@ -18,7 +20,14 @@ function placed(src, nativeW, nativeH, count, cx, cy, cards) {
     w: size.w,
     h: size.h,
     cards,
+    rot,
   };
+}
+
+function layoutSize(spec) {
+  const rot = (((spec.rot || 0) % 360) + 360) % 360;
+  const swap = rot === 90 || rot === 270;
+  return swap ? { w: spec.h, h: spec.w } : { w: spec.w, h: spec.h };
 }
 
 // Coloured body of each colony — includes cyan/green rings, not only the pale core.
@@ -52,35 +61,42 @@ function unitRandom(seed) {
 
 function cardBoxes(spec) {
   const count = spec.cards.length;
-  const frame = INTERIOR[spec.src];
-  const rand = unitRandom(hashString(`${spec.src}:spread-v3`));
+  const raw = INTERIOR[spec.src];
+  // Inset so the muffa rim stays visible around every photo.
+  const inset = 7;
+  const frame = {
+    x: raw.x + inset,
+    y: raw.y + inset,
+    w: Math.max(8, raw.w - inset * 2),
+    h: Math.max(8, raw.h - inset * 2),
+  };
+  const rand = unitRandom(hashString(`${spec.src}:spread-v5`));
   const aspect = spec.w / spec.h;
-  // Match real photo+caption footprint so packing gaps match what you see.
-  const cardRatio = 1.05;
-  const heightOf = (width) => cardRatio * width * aspect;
-  const gap = 1.8;
+  // Photo-only cards (16:9) — slightly larger, muffa still visible between them.
+  const photoRatio = 9 / 16;
+  const heightOf = (width) => width * aspect * photoRatio;
+  const gap = 2.2;
   const golden = Math.PI * (3 - Math.sqrt(5));
   const spin = rand() * Math.PI * 2;
 
-  // Spread across the whole coloured body — no central pile.
+  // Spread across the coloured body — leave muffa texture between cards.
   const seeds = [];
   for (let i = 0; i < count; i += 1) {
-    const t = count === 1 ? 0.2 : (i + 0.5) / count;
-    const reach = Math.sqrt(0.2 + 0.8 * t);
-    const ang = spin + i * golden + (rand() - 0.5) * 0.45;
-    const rx = frame.w * 0.46 * (0.95 + rand() * 0.1);
-    const ry = frame.h * 0.46 * (0.95 + rand() * 0.1);
+    const t = count === 1 ? 0.28 : (i + 0.45) / count;
+    const reach = Math.sqrt(0.12 + 0.82 * t);
+    const ang = spin + i * golden + (rand() - 0.5) * 0.35;
+    const rx = frame.w * 0.44 * (0.96 + rand() * 0.06);
+    const ry = frame.h * 0.44 * (0.96 + rand() * 0.06);
     seeds.push({
       ox: frame.x + frame.w / 2 + Math.cos(ang) * reach * rx,
       oy: frame.y + frame.h / 2 + Math.sin(ang) * reach * ry,
-      weight: 0.97 + rand() * 0.06,
+      weight: 0.96 + rand() * 0.06,
     });
   }
 
   const areaScale = seeds.reduce((sum, seed) => sum + seed.weight * seed.weight, 0);
-  // Conservative fill — never force cards larger than the surface can hold.
-  const fill = count <= 2 ? 0.48 : count <= 6 ? 0.52 : count <= 11 ? 0.56 : 0.58;
-  let base = Math.sqrt((frame.w * frame.h * fill) / (cardRatio * aspect * areaScale));
+  const fill = count <= 2 ? 0.36 : count <= 6 ? 0.4 : count <= 11 ? 0.42 : 0.44;
+  let base = Math.sqrt((frame.w * frame.h * fill) / (aspect * photoRatio * areaScale));
 
   const place = (baseWidth) => seeds.map((seed) => {
     const w = baseWidth * seed.weight;
@@ -158,32 +174,34 @@ function cardBoxes(spec) {
 }
 
 function arrangeSpecimens() {
-  // Centripetal: largest at the core, five on a ring — sizes unchanged, no overlap.
-  const gap = 1000;
+  // Centripetal: larger muffe, full boxes clear of each other.
+  const gap = 140;
   const center = SPECIMENS[5];
-  center.x = -center.w / 2;
-  center.y = -center.h / 2;
+  const cLay = layoutSize(center);
+  center.x = -cLay.w / 2;
+  center.y = -cLay.h / 2;
   const ring = [3, 2, 1, 0, 4];
   let radius = 0;
   for (const index of ring) {
     const spec = SPECIMENS[index];
+    const lay = layoutSize(spec);
     const need =
-      (center.w + spec.w) * 0.5 + (center.h + spec.h) * 0.22 + gap;
+      (cLay.w + lay.w) * 0.5 + (cLay.h + lay.h) * 0.06 + gap;
     radius = Math.max(radius, need);
   }
-  // Keep ring neighbours clear (5 × 72°).
   const chordFactor = 2 * Math.sin(Math.PI / ring.length);
   for (let i = 0; i < ring.length; i += 1) {
-    const a = SPECIMENS[ring[i]];
-    const b = SPECIMENS[ring[(i + 1) % ring.length]];
-    const minChord = (a.w + b.w) * 0.5 + (a.h + b.h) * 0.12 + gap;
+    const a = layoutSize(SPECIMENS[ring[i]]);
+    const b = layoutSize(SPECIMENS[ring[(i + 1) % ring.length]]);
+    const minChord = (a.w + b.w) * 0.5 + (a.h + b.h) * 0.05 + gap;
     radius = Math.max(radius, minChord / chordFactor);
   }
   for (let i = 0; i < ring.length; i += 1) {
     const ang = -Math.PI / 2 + 0.18 + (i * 2 * Math.PI) / ring.length;
     const spec = SPECIMENS[ring[i]];
-    spec.x = Math.cos(ang) * radius - spec.w / 2;
-    spec.y = Math.sin(ang) * radius - spec.h / 2;
+    const lay = layoutSize(spec);
+    spec.x = Math.cos(ang) * radius - lay.w / 2;
+    spec.y = Math.sin(ang) * radius - lay.h / 2;
   }
 }
 
@@ -532,46 +550,70 @@ function sheetForTitle(title) {
   return "";
 }
 
+// Earliest year found in each SVG etichetta (2008 → 2026).
+const SHEET_YEARS = {
+  "etichette di ogni foto/AF01_Amazon_Fresh_sconta_prodotti_a_breve_scadenza.svg": [2023],
+  "etichette di ogni foto/AF02_Amazon_Fresh_diversione_organica_nei_negozi.svg": [2023],
+  "etichette di ogni foto/AF03_Amazon_Fresh_aderisce_al_Food_Waste_Pact.svg": [2024],
+  "etichette di ogni foto/AU01_Spesa_online_e_spreco_domestico_in_Australia.svg": [2023],
+  "etichette di ogni foto/U01_Love_Food_Hate_Waste_Crying_Pear.svg": [2012],
+  "etichette di ogni foto/U02_WRAP_The_Food_We_Waste.svg": [2008],
+  "etichette di ogni foto/U03_Love_Food_Hate_Waste_nuove_creativit.svg": [2009],
+  "etichette di ogni foto/U04_Epic_Meal_Time_Fast_Food_Pizza.svg": [2010, 2011],
+  "etichette di ogni foto/U05_Taste_the_Waste.svg": [2011],
+  "etichette di ogni foto/U06_Tristram_Stuart_The_Global_Food_Waste_Scandal.svg": [2012],
+  "etichette di ogni foto/U07_Think_Eat_Save.svg": [2013],
+  "etichette di ogni foto/U08_Blogilates_What_I_Eat_in_a_Day.svg": [2014],
+  "etichette di ogni foto/U09_Intermarch_Inglorious_Fruits_and_Vegetables.svg": [2014],
+  "etichette di ogni foto/U10_YouTubers_React_to_Mukbang.svg": [2015],
+  "etichette di ogni foto/U12_Lancio_del_marketplace_Too_Good_To_Go.svg": [2016],
+  "etichette di ogni foto/U14_Twitch_riconosce_Social_Eating.svg": [2016],
+  "etichette di ogni foto/U15_Mizijun_dieci_confezioni_di_noodles.svg": [2016],
+  "etichette di ogni foto/U16_Messaggi_antispreco_di_un_retailer.svg": [2017],
+  "etichette di ogni foto/U17_BuzzFeed_una_settimana_senza_sprecare_cibo.svg": [2018],
+  "etichette di ogni foto/U18_Too_Good_To_Go_arriva_in_Italia.svg": [2019],
+  "etichette di ogni foto/U19_Emily_Canham_e_le_24_ore_di_avanzi.svg": [2019],
+  "etichette di ogni foto/U20_WUR_studio_sulle_Magic_Box.svg": [2019],
+  "etichette di ogni foto/U21_Ricezione_del_mukbang_su_YouTube_e_Reddit.svg": [2020],
+  "etichette di ogni foto/U23_Too_Good_To_Go_Food_Unboxed.svg": [2020],
+  "etichette di ogni foto/U24_Legge_cinese_contro_lo_spreco_alimentare.svg": [2021],
+  "etichette di ogni foto/U25_Emily_Mariko_salmon_rice_bowl.svg": [2021],
+  "etichette di ogni foto/U26_Community_Too_Good_To_Go_su_Facebook.svg": [2022],
+  "etichette di ogni foto/U27_Subry_bag_tra_Milano_e_Amsterdam.svg": [2022],
+  "etichette di ogni foto/U28_Unboxing_e_tutorial_come_marketing.svg": [2022],
+  "etichette di ogni foto/U29_Revisione_degli_studi_sulle_campagne_social.svg": [2022],
+  "etichette di ogni foto/U30_Ally_la_bag_con_torta.svg": [2023],
+  "etichette di ogni foto/U31_Use-up_day_e_ricette_flessibili.svg": [2023],
+  "etichette di ogni foto/U32_Analisi_di_video_What_I_Eat_in_a_Day.svg": [2023],
+  "etichette di ogni foto/U33_Whole_Foods_rollout_nazionale_con_TGTG.svg": [2024],
+  "etichette di ogni foto/U34_Esperimento_di_esposizione_a_food_diary.svg": [2024],
+  "etichette di ogni foto/U35_Modello_aziendale_dalla_bag_al_beneficio_ambientale.svg": [2022, 2023, 2024],
+  "etichette di ogni foto/U36_UNEP_dove_si_genera_lo_spreco.svg": [2024],
+  "etichette di ogni foto/U37_Too_Good_To_Go_Settimana_Zero_Sprechi.svg": [2024],
+  "etichette di ogni foto/U38_Modello_recupero_o_spostamento_dello_spreco.svg": [2025],
+  "etichette di ogni foto/U39_WUR_mangiare_conservare_condividere_scartare.svg": [2025],
+  "etichette di ogni foto/U40_Ellie_bag_di_salmone_Whole_Foods.svg": [2025],
+  "etichette di ogni foto/U41_Waste_Watcher_serie_italiana.svg": [2024, 2025],
+  "etichette di ogni foto/U42_Dati_Too_Good_To_Go_Italia_sul_2025.svg": [2024, 2025, 2026],
+  "etichette di ogni foto/U48_Avvisi_e_sanzioni_delle_piattaforme.svg": [2020],
+};
+
+const TIME_START = 2008;
+const TIME_END = 2026;
+
 for (const spec of SPECIMENS) {
   for (const card of spec.cards) {
     card.sheet = sheetForTitle(card.title);
+    card.years = card.sheet && SHEET_YEARS[card.sheet] ? SHEET_YEARS[card.sheet].slice() : [];
   }
 }
 
-const HOVER_SHOW_MS = 1800;
-const HOVER_HIDE_MS = 650;
+const HOVER_SHOW_MS = 420;
+const HOVER_HIDE_MS = 480;
 // Native etichette SVG are 285×112 — keep sheet size tied to the photo card.
 const SHEET_NATIVE_W = 285;
 const SHEET_NATIVE_H = 112;
 const SHEET_ASPECT = SHEET_NATIVE_W / SHEET_NATIVE_H;
-
-function buildFallbackSheet(card) {
-  const wrap = document.createElement("div");
-  wrap.className = "label-sheet-fallback";
-  const head = document.createElement("p");
-  head.className = "sheet-head";
-  head.textContent = card.title;
-  const rows = [
-    ["Media", card.kind || "—"],
-    ["Paese", card.country || "—"],
-    ["Anno", card.year || "—"],
-    ["Impatto sul pubblico", card.impact || "Scheda caso studio."],
-  ];
-  wrap.appendChild(head);
-  for (const [key, value] of rows) {
-    const row = document.createElement("div");
-    row.className = "sheet-row";
-    const k = document.createElement("p");
-    k.className = "sheet-key";
-    k.textContent = key;
-    const v = document.createElement("p");
-    v.className = "sheet-val";
-    v.textContent = value;
-    row.append(k, v);
-    wrap.appendChild(row);
-  }
-  return wrap;
-}
 
 function rememberLabelLayout(label) {
   if (label._baseLayout) return;
@@ -589,42 +631,43 @@ function restoreLabelLayout(label) {
   label.style.top = label._baseLayout.top;
   label.style.width = label._baseLayout.width;
   label.style.height = label._baseLayout.height;
+  label.style.aspectRatio = "";
   label._baseLayout = null;
 }
 
 function layoutLabelSheet(label) {
   rememberLabelLayout(label);
-  const colony = label.parentElement;
+  // Slightly larger than the photo only — never bigger than the muffa.
+  const colony = label.closest(".colony") || label.parentElement;
   const colonyW = colony.clientWidth || 1;
   const colonyH = colony.clientHeight || 1;
-  const vw = slide.clientWidth || window.innerWidth;
-  const vh = slide.clientHeight || window.innerHeight;
   const slideRect = slide.getBoundingClientRect();
-  const rect = label.getBoundingClientRect();
-  const cardW = rect.width || 1;
+  const cardW = label.getBoundingClientRect().width || 1;
 
-  // Full native etichetta — readable, never cropped to fit the muffa box.
-  let sheetW = Math.max(cardW * 1.14, Math.min(vw * 0.52, 400));
-  sheetW = Math.min(Math.max(sheetW, Math.min(360, vw * 0.48)), vw * 0.82, 560);
+  let sheetW = cardW * 1.18;
+  sheetW = Math.min(sheetW, colonyW * 0.42, slide.clientWidth * 0.36);
+  sheetW = Math.max(sheetW, cardW);
   const sheetH = sheetW / SHEET_ASPECT;
+  const maxH = colonyH * 0.38;
+  const finalH = Math.min(sheetH, maxH);
+  const finalW = finalH * SHEET_ASPECT;
 
-  const curLeft = parseFloat(label.style.left) || 0;
-  const curTop = parseFloat(label.style.top) || 0;
+  const curLeft = parseFloat(label._baseLayout.left) || 0;
+  const curTop = parseFloat(label._baseLayout.top) || 0;
+  label.style.aspectRatio = "auto";
   label.style.left = `${curLeft}%`;
   label.style.top = `${curTop}%`;
-  label.style.width = `${(sheetW / colonyW) * 100}%`;
-  label.style.height = `${(sheetH / colonyH) * 100}%`;
+  label.style.width = `${(finalW / colonyW) * 100}%`;
+  label.style.height = `${(finalH / colonyH) * 100}%`;
 
-  // Nudge into the slide so the whole sheet stays on-screen.
   const after = label.getBoundingClientRect();
-  const pad = 14;
+  const pad = 10;
   let dx = 0;
   let dy = 0;
   if (after.right > slideRect.right - pad) dx = slideRect.right - pad - after.right;
   if (after.left + dx < slideRect.left + pad) dx = slideRect.left + pad - after.left;
   if (after.bottom > slideRect.bottom - pad) dy = slideRect.bottom - pad - after.bottom;
   if (after.top + dy < slideRect.top + pad) dy = slideRect.top + pad - after.top;
-  if (sheetH > vh - pad * 2) dy = slideRect.top + pad - after.top;
   if (dx || dy) {
     const colonyRect = colony.getBoundingClientRect();
     label.style.left = `${((after.left + dx - colonyRect.left) / colonyW) * 100}%`;
@@ -632,10 +675,28 @@ function layoutLabelSheet(label) {
   }
 }
 
+function ensureMedia(el) {
+  // img.src is always an absolute URL — check the attribute, not the property.
+  if (!el || !el.dataset.src || el.getAttribute("src")) return;
+  el.src = el.dataset.src;
+}
+
+function ensureLabelMedia(label) {
+  ensureMedia(label.querySelector(".label-photo"));
+  ensureMedia(label.querySelector(".label-sheet-img"));
+}
+
 function showLabelSheet(label) {
   if (label.classList.contains("is-sheet")) return;
+  const sheetImg = label.querySelector(".label-sheet-img");
+  // Only real SVG etichette — no fallback table.
+  if (!sheetImg) return;
+  ensureLabelMedia(label);
   layoutLabelSheet(label);
   label.classList.add("is-sheet");
+  if (sheetImg.dataset.src && !sheetImg.getAttribute("src")) {
+    sheetImg.src = sheetImg.dataset.src;
+  }
 }
 
 function clearLabelSheet(label) {
@@ -659,6 +720,7 @@ function bindLabelHover(label) {
   });
   label.addEventListener("pointerenter", () => {
     if (!label.classList.contains("is-hot")) return;
+    ensureLabelMedia(label);
     if (label._hideTimer) {
       clearTimeout(label._hideTimer);
       label._hideTimer = 0;
@@ -681,24 +743,26 @@ function bindLabelHover(label) {
   });
 }
 
-// Fit the whole cluster in view — cards stay spaced, no piled zoom.
-const VIEW_FILL = 0.9;
+// Fit = 4× base. Max magnifier = 14×. Photos appear from 8×.
+const VIEW_FILL = 0.98;
 const LOW_POWER = 4;
+const HIGH_POWER = 14;
+const LABEL_POWER = 8;
 
 const slide = document.querySelector("#slide");
 const stage = document.querySelector("#stage");
 const mag = document.querySelector("#mag");
 const hint = document.querySelector("#hint");
 
-const bounds = SPECIMENS.reduce(
-  (box, spec) => ({
+const bounds = SPECIMENS.reduce((box, spec) => {
+  const lay = layoutSize(spec);
+  return {
     x: Math.min(box.x, spec.x),
     y: Math.min(box.y, spec.y),
-    right: Math.max(box.right, spec.x + spec.w),
-    bottom: Math.max(box.bottom, spec.y + spec.h),
-  }),
-  { x: Infinity, y: Infinity, right: -Infinity, bottom: -Infinity }
-);
+    right: Math.max(box.right, spec.x + lay.w),
+    bottom: Math.max(box.bottom, spec.y + lay.h),
+  };
+}, { x: Infinity, y: Infinity, right: -Infinity, bottom: -Infinity });
 bounds.w = bounds.right - bounds.x;
 bounds.h = bounds.bottom - bounds.y;
 
@@ -721,8 +785,16 @@ const STAINS = [
 ];
 
 const colonies = SPECIMENS.map((spec, index) => {
+  const lay = layoutSize(spec);
   const el = document.createElement("div");
   el.className = "colony";
+  const spin = document.createElement("div");
+  spin.className = "colony-spin";
+  if (spec.rot) {
+    spin.style.transform = `translate(-50%, -50%) rotate(${spec.rot}deg)`;
+  } else {
+    spin.style.transform = "translate(-50%, -50%)";
+  }
   const shadow = document.createElement("div");
   shadow.className = "shadow";
   const img = new Image();
@@ -730,8 +802,10 @@ const colonies = SPECIMENS.map((spec, index) => {
   img.alt = "";
   img.draggable = false;
   img.decoding = "async";
-  el.appendChild(shadow);
-  el.appendChild(img);
+  spin.appendChild(shadow);
+  spin.appendChild(img);
+  el.appendChild(spin);
+  // Labels stay upright on the colony — never rotate with the muffa art.
   const boxes = cardBoxes(spec);
   spec.cards.forEach((card, cardIndex) => {
     const label = document.createElement("article");
@@ -741,30 +815,23 @@ const colonies = SPECIMENS.map((spec, index) => {
     label.style.width = boxes[cardIndex].width;
     const photo = new Image();
     photo.className = "label-photo";
-    photo.src = encodeURI(card.src);
-    photo.alt = "";
+    photo.dataset.src = encodeURI(card.src);
+    photo.alt = card.title;
     photo.draggable = false;
     photo.decoding = "async";
-    const title = document.createElement("p");
-    title.className = "label-title";
-    title.textContent = card.title;
-    const kind = document.createElement("p");
-    kind.className = "label-kind";
-    kind.textContent = card.kind;
     const sheet = document.createElement("div");
     sheet.className = "label-sheet";
     if (card.sheet) {
       const sheetImg = new Image();
       sheetImg.className = "label-sheet-img";
-      sheetImg.src = encodeURI(card.sheet);
+      sheetImg.dataset.src = encodeURI(card.sheet);
       sheetImg.alt = card.title;
       sheetImg.draggable = false;
       sheetImg.decoding = "async";
       sheet.appendChild(sheetImg);
-    } else {
-      sheet.appendChild(buildFallbackSheet(card));
     }
-    label.append(photo, title, kind, sheet);
+    label.dataset.years = (card.years || []).join(",");
+    label.append(photo, sheet);
     bindLabelHover(label);
     el.appendChild(label);
   });
@@ -772,25 +839,27 @@ const colonies = SPECIMENS.map((spec, index) => {
   return {
     spec,
     el,
+    spin,
     img,
     shadow,
+    layW: lay.w,
+    layH: lay.h,
     motion: { ...MOTION[index], phase: index * 2.15 },
     stain: STAINS[index],
     floatX: 0,
     floatY: 0,
-    x: spec.x + spec.w / 2,
-    y: spec.y + spec.h / 2,
-    homeX: spec.x + spec.w / 2,
-    homeY: spec.y + spec.h / 2,
-    // Half-box of the full PNG — separation never lets boxes overlap.
-    hw: spec.w * 0.5,
-    hh: spec.h * 0.5,
+    x: spec.x + lay.w / 2,
+    y: spec.y + lay.h / 2,
+    homeX: spec.x + lay.w / 2,
+    homeY: spec.y + lay.h / 2,
+    hw: lay.w * 0.5,
+    hh: lay.h * 0.5,
     nudgeX: 0,
     nudgeY: 0,
   };
 });
 
-const SEPARATION = 900;
+const SEPARATION = 100;
 
 function separateColonies() {
   for (let pass = 0; pass < 48; pass += 1) {
@@ -834,11 +903,11 @@ function refreshBounds() {
   let maxX = -Infinity;
   let maxY = -Infinity;
   for (const colony of colonies) {
-    const pad = 40;
-    minX = Math.min(minX, colony.homeX - colony.spec.w / 2 - pad);
-    minY = Math.min(minY, colony.homeY - colony.spec.h / 2 - pad);
-    maxX = Math.max(maxX, colony.homeX + colony.spec.w / 2 + pad);
-    maxY = Math.max(maxY, colony.homeY + colony.spec.h / 2 + pad);
+    const pad = 16;
+    minX = Math.min(minX, colony.homeX - colony.layW / 2 - pad);
+    minY = Math.min(minY, colony.homeY - colony.layH / 2 - pad);
+    maxX = Math.max(maxX, colony.homeX + colony.layW / 2 + pad);
+    maxY = Math.max(maxY, colony.homeY + colony.layH / 2 + pad);
   }
   bounds.x = minX;
   bounds.y = minY;
@@ -857,6 +926,7 @@ let panX = 0;
 let panY = 0;
 let atFit = true;
 let laidOutZoom = -1;
+let selectedYear = null; // null = tutti gli anni
 let anchorX = 0;
 let anchorY = 0;
 const pointer = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
@@ -870,17 +940,33 @@ function currentFit() {
   return Math.min((vw * VIEW_FILL) / bounds.w, (vh * VIEW_FILL) / bounds.h);
 }
 
+function currentPower() {
+  return LOW_POWER * (zoom / currentFit());
+}
+
 function zoomLimits() {
   const fit = currentFit();
   return {
-    min: fit * 0.7,
-    max: Math.max(fit * 1.4, Math.min(5.5, fit * 12)),
+    min: fit, // 4×
+    max: fit * (HIGH_POWER / LOW_POWER), // 12×
   };
 }
 
 function fade(value, start, end) {
   const t = Math.min(1, Math.max(0, (value - start) / (end - start)));
   return t * t * (3 - 2 * t);
+}
+
+function labelMatchesYear(label, year) {
+  if (year == null) return true;
+  const raw = label.dataset.years || "";
+  if (!raw) return false;
+  return raw.split(",").some((value) => Number(value) === year);
+}
+
+function refreshLabelVisibility() {
+  laidOutZoom = -1;
+  paint();
 }
 
 function paint() {
@@ -890,34 +976,32 @@ function paint() {
     const zoomingOut = zoom < laidOutZoom;
     laidOutZoom = zoom;
     for (const colony of colonies) {
-      const width = colony.spec.w * zoom;
+      const width = colony.layW * zoom;
+      const height = colony.layH * zoom;
       colony.el.style.width = `${width}px`;
-      colony.el.style.height = `${colony.spec.h * zoom}px`;
+      colony.el.style.height = `${height}px`;
+      colony.spin.style.width = `${colony.spec.w * zoom}px`;
+      colony.spin.style.height = `${colony.spec.h * zoom}px`;
+      const power = currentPower();
       for (const label of colony.el.querySelectorAll(".label")) {
-        const cardCss = width * (parseFloat(label.style.width) / 100);
-        // Appear only when close enough — overview stays a clean muffa field.
-        const photo = fade(cardCss, 100, 160);
-        const text = fade(cardCss, 170, 240);
+        // Photos visible from 8× — filtered by timeline year when active.
+        const yearOk = labelMatchesYear(label, selectedYear);
+        const photo = yearOk ? fade(power, LABEL_POWER - 0.35, LABEL_POWER) : 0;
         label.style.opacity = photo.toFixed(3);
-        label.style.fontSize = `${Math.min(16, Math.max(12, cardCss * 0.05))}px`;
         const hot = photo > 0.5;
         label.classList.toggle("is-hot", hot);
+        if (power >= LABEL_POWER - 0.8 && yearOk) ensureLabelMedia(label);
         if (!hot || zoomingOut || atFit) clearLabelSheet(label);
         else if (label.classList.contains("is-sheet")) layoutLabelSheet(label);
-        for (const line of label.querySelectorAll(".label-title, .label-kind")) {
-          line.style.display = text > 0.04 && !label.classList.contains("is-sheet") ? "block" : "none";
-          line.style.opacity = text.toFixed(3);
-        }
       }
     }
   }
   for (const colony of colonies) {
-    colony.el.style.left = `${(colony.x - colony.spec.w / 2) * zoom}px`;
-    colony.el.style.top = `${(colony.y - colony.spec.h / 2) * zoom}px`;
+    colony.el.style.left = `${(colony.x - colony.layW / 2) * zoom}px`;
+    colony.el.style.top = `${(colony.y - colony.layH / 2) * zoom}px`;
   }
 
-  const power = LOW_POWER * (zoom / currentFit());
-  mag.textContent = `${power.toFixed(1)}×`;
+  mag.textContent = `${currentPower().toFixed(1)}×`;
 
   const vw = slide.clientWidth || window.innerWidth;
   const vh = slide.clientHeight || window.innerHeight;
@@ -979,7 +1063,11 @@ function openSlide() {
   const cardWorld = focus.spec.w * (parseFloat(label.style.width) / 100);
   const readable = 176 / cardWorld;
   const fillWidth = (vw * 0.94) / focus.spec.w;
-  zoom = Math.min(Math.max(readable, fillWidth), 210 / cardWorld);
+  const limits = zoomLimits();
+  zoom = Math.min(
+    limits.max,
+    Math.max(limits.min, Math.min(Math.max(readable, fillWidth), 210 / cardWorld))
+  );
   panX = vw / 2 - focus.homeX * zoom;
   panY = vh / 2 - focus.homeY * zoom;
   atFit = false;
@@ -1273,12 +1361,11 @@ const FUZZ = [
   [168, 210, 186],
 ];
 
-function bakeSpore(radius, family) {
-  const size = Math.max(48, Math.min(128, Math.round(radius * 2)));
+function bakeSpore(size, family) {
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { alpha: true });
   const cx = size / 2;
   const cy = size / 2;
   const reach = size * 0.36;
@@ -1299,7 +1386,7 @@ function bakeSpore(radius, family) {
     ctx.fillRect(x | 0, y | 0, s, s);
   };
 
-  const bodyCount = Math.round(reach * reach * 2.4);
+  const bodyCount = Math.round(reach * reach * 1.6);
   for (let i = 0; i < bodyCount; i += 1) {
     const angle = rand() * Math.PI * 2;
     const dist = Math.sqrt(rand()) * reach * edge(angle);
@@ -1307,7 +1394,7 @@ function bakeSpore(radius, family) {
     dot(cx + Math.cos(angle) * dist, cy + Math.sin(angle) * dist, shade, 1);
   }
 
-  const fuzzCount = Math.round(reach * 10);
+  const fuzzCount = Math.round(reach * 7);
   for (let i = 0; i < fuzzCount; i += 1) {
     const angle = rand() * Math.PI * 2;
     const dist = reach * edge(angle) * (0.86 + rand() * 0.28);
@@ -1319,9 +1406,9 @@ function bakeSpore(radius, family) {
     );
   }
 
-  if (radius > 34 && rand() > 0.3) {
+  if (size > 56 && rand() > 0.3) {
     const core = reach * (0.12 + rand() * 0.1);
-    const coreCount = Math.round(core * core * 2.2);
+    const coreCount = Math.round(core * core * 1.8);
     for (let i = 0; i < coreCount; i += 1) {
       const angle = rand() * Math.PI * 2;
       const dist = Math.sqrt(rand()) * core;
@@ -1330,6 +1417,29 @@ function bakeSpore(radius, family) {
   }
 
   return canvas;
+}
+
+// Reuse a tiny sprite pool — baking one canvas per spore blocked startup for minutes.
+const SPORE_SPRITES = [];
+for (let family = 0; family < 3; family += 1) {
+  for (const size of [48, 64, 80, 96]) {
+    SPORE_SPRITES.push({ family, size, canvas: bakeSpore(size, family) });
+  }
+}
+
+function pickSporeSprite(radius, family) {
+  const want = Math.max(48, Math.min(96, Math.round(radius * 0.55)));
+  let best = SPORE_SPRITES[0];
+  let bestScore = Infinity;
+  for (const sprite of SPORE_SPRITES) {
+    if (sprite.family !== family) continue;
+    const score = Math.abs(sprite.size - want);
+    if (score < bestScore) {
+      best = sprite;
+      bestScore = score;
+    }
+  }
+  return best.canvas;
 }
 
 const field = {
@@ -1345,7 +1455,7 @@ const cover = {
   h: span * 2.3,
 };
 const patches = [];
-for (let n = 0; n < 2600; n += 1) {
+for (let n = 0; n < 1600; n += 1) {
   const roll = rand();
   // Slightly smaller spores — keep the field dense, just a touch lighter.
   const baseR = roll < 0.58 ? 19 + rand() * 23 : roll < 0.88 ? 42 + rand() * 32 : 74 + rand() * 38;
@@ -1367,11 +1477,12 @@ for (let n = 0; n < 2600; n += 1) {
     phase: rand() * Math.PI * 2,
     radius,
     aspect: 0.84 + rand() * 0.3,
-    sprite: bakeSpore(radius, family),
+    sprite: pickSporeSprite(radius, family),
   });
 }
 
-for (let pass = 0; pass < 8; pass += 1) {
+// Push spores off muffe bodies only — skip pairwise O(n²) separation (was multi-minute).
+for (let pass = 0; pass < 3; pass += 1) {
   for (const patch of patches) {
     const reach = patch.radius * 0.72;
     for (const colony of colonies) {
@@ -1385,26 +1496,6 @@ for (let pass = 0; pass < 8; pass += 1) {
       if (n >= 1 || n < 0.0001) continue;
       patch.ox = colony.homeX + dx / n;
       patch.oy = colony.homeY + dy / n;
-    }
-  }
-  for (let i = 0; i < patches.length; i += 1) {
-    for (let j = i + 1; j < patches.length; j += 1) {
-      const a = patches[i];
-      const b = patches[j];
-      const dx = b.ox - a.ox;
-      const dy = b.oy - a.oy;
-      const ra = a.radius * 0.8 * Math.max(a.aspect, 1);
-      const rb = b.radius * 0.8 * Math.max(b.aspect, 1);
-      const min = ra + rb;
-      const dist = Math.hypot(dx, dy) || 0.001;
-      if (dist >= min) continue;
-      const push = (min - dist) * 0.5;
-      const ux = dx / dist;
-      const uy = dy / dist;
-      a.ox -= ux * push;
-      a.oy -= uy * push;
-      b.ox += ux * push;
-      b.oy += uy * push;
     }
   }
 }
@@ -1492,9 +1583,12 @@ function poseColonies(time, dt) {
   for (const colony of colonies) {
     colony.floatX = (colony.x - colony.homeX) * zoom;
     colony.floatY = (colony.y - colony.homeY) * zoom;
-    colony.el.style.left = `${(colony.x - colony.spec.w / 2) * zoom}px`;
-    colony.el.style.top = `${(colony.y - colony.spec.h / 2) * zoom}px`;
-    colony.img.style.transform = "none";
+    colony.el.style.left = `${(colony.x - colony.layW / 2) * zoom}px`;
+    colony.el.style.top = `${(colony.y - colony.layH / 2) * zoom}px`;
+    const rot = colony.spec.rot || 0;
+    colony.spin.style.transform = rot
+      ? `translate(-50%, -50%) rotate(${rot}deg)`
+      : "translate(-50%, -50%)";
     colony.shadow.style.opacity = "0";
   }
 }
@@ -1549,9 +1643,26 @@ function drawSpores() {
 
   backCtx.globalCompositeOperation = "destination-out";
   for (const colony of colonies) {
-    const left = panX + (colony.x - colony.spec.w / 2) * zoom;
-    const top = panY + (colony.y - colony.spec.h / 2) * zoom;
-    backCtx.drawImage(colony.img, left, top, colony.spec.w * zoom, colony.spec.h * zoom);
+    const left = panX + (colony.x - colony.layW / 2) * zoom;
+    const top = panY + (colony.y - colony.layH / 2) * zoom;
+    const dw = colony.layW * zoom;
+    const dh = colony.layH * zoom;
+    const rot = colony.spec.rot || 0;
+    if (rot) {
+      backCtx.save();
+      backCtx.translate(left + dw / 2, top + dh / 2);
+      backCtx.rotate((rot * Math.PI) / 180);
+      backCtx.drawImage(
+        colony.img,
+        (-colony.spec.w * zoom) / 2,
+        (-colony.spec.h * zoom) / 2,
+        colony.spec.w * zoom,
+        colony.spec.h * zoom
+      );
+      backCtx.restore();
+    } else {
+      backCtx.drawImage(colony.img, left, top, dw, dh);
+    }
   }
   backCtx.globalCompositeOperation = "source-over";
 }
@@ -1616,14 +1727,15 @@ function buildEntryMap() {
     img.alt = "";
     img.draggable = false;
     img.decoding = "async";
-    const left = pad * 100 + ((colony.homeX - colony.spec.w / 2 - bounds.x) / spanW) * (100 - pad * 200);
-    const top = pad * 100 + ((colony.homeY - colony.spec.h / 2 - bounds.y) / spanH) * (100 - pad * 200);
-    const width = (colony.spec.w / spanW) * (100 - pad * 200);
-    const height = (colony.spec.h / spanH) * (100 - pad * 200);
+    const left = pad * 100 + ((colony.homeX - colony.layW / 2 - bounds.x) / spanW) * (100 - pad * 200);
+    const top = pad * 100 + ((colony.homeY - colony.layH / 2 - bounds.y) / spanH) * (100 - pad * 200);
+    const width = (colony.layW / spanW) * (100 - pad * 200);
+    const height = (colony.layH / spanH) * (100 - pad * 200);
     img.style.left = `${left}%`;
     img.style.top = `${top}%`;
     img.style.width = `${width}%`;
     img.style.height = `${height}%`;
+    if (colony.spec.rot) img.style.transform = `rotate(${colony.spec.rot}deg)`;
     entryMap.appendChild(img);
   }
   paintEntrySpores();
@@ -1676,11 +1788,22 @@ function paintEntrySpores() {
 
   ctx.globalCompositeOperation = "destination-out";
   for (const colony of colonies) {
-    const leftTop = toCanvas(colony.homeX - colony.spec.w / 2, colony.homeY - colony.spec.h / 2);
-    const width = (colony.spec.w / spanW) * usable * size;
-    const height = (colony.spec.h / spanH) * usable * size;
+    const leftTop = toCanvas(colony.homeX - colony.layW / 2, colony.homeY - colony.layH / 2);
+    const width = (colony.layW / spanW) * usable * size;
+    const height = (colony.layH / spanH) * usable * size;
     if (colony.img.complete && colony.img.naturalWidth) {
-      ctx.drawImage(colony.img, leftTop.x, leftTop.y, width, height);
+      const rot = colony.spec.rot || 0;
+      if (rot) {
+        ctx.save();
+        ctx.translate(leftTop.x + width / 2, leftTop.y + height / 2);
+        ctx.rotate((rot * Math.PI) / 180);
+        const iw = (colony.spec.w / spanW) * usable * size;
+        const ih = (colony.spec.h / spanH) * usable * size;
+        ctx.drawImage(colony.img, -iw / 2, -ih / 2, iw, ih);
+        ctx.restore();
+      } else {
+        ctx.drawImage(colony.img, leftTop.x, leftTop.y, width, height);
+      }
     }
   }
   ctx.globalCompositeOperation = "source-over";
@@ -1787,6 +1910,91 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
+const timeline = document.querySelector("#timeline");
+const timelineTrack = document.querySelector("#timelineTrack");
+const timelineCursor = document.querySelector("#timelineCursor");
+const timelineYears = document.querySelector("#timelineYears");
+const timelineReadout = document.querySelector("#timelineReadout");
+let timelineDragging = false;
+
+function yearToRatio(year) {
+  return (year - TIME_START) / (TIME_END - TIME_START);
+}
+
+function ratioToYear(ratio) {
+  const t = Math.min(1, Math.max(0, ratio));
+  return Math.round(TIME_START + t * (TIME_END - TIME_START));
+}
+
+function setTimelineYear(year, activate = true) {
+  const next = Math.min(TIME_END, Math.max(TIME_START, year));
+  if (activate) selectedYear = next;
+  if (timelineCursor) {
+    timelineCursor.style.left = `${yearToRatio(next) * 100}%`;
+  }
+  if (timelineYears) {
+    for (const span of timelineYears.querySelectorAll("span")) {
+      span.classList.toggle("is-active", Number(span.dataset.year) === next && selectedYear != null);
+    }
+  }
+  if (timelineReadout) {
+    timelineReadout.textContent = selectedYear == null ? "tutti" : String(selectedYear);
+  }
+  refreshLabelVisibility();
+}
+
+function timelineRatioFromEvent(event) {
+  if (!timelineTrack) return 0;
+  const rect = timelineTrack.getBoundingClientRect();
+  return (event.clientX - rect.left) / Math.max(1, rect.width);
+}
+
+function buildTimeline() {
+  if (!timelineYears) return;
+  timelineYears.replaceChildren();
+  // Every 2 years keeps labels readable; drag still selects any year.
+  for (let year = TIME_START; year <= TIME_END; year += 2) {
+    const span = document.createElement("span");
+    span.textContent = String(year);
+    span.dataset.year = String(year);
+    // Place each year under its position on the line (no tick marks).
+    span.style.position = "absolute";
+    span.style.left = `${yearToRatio(year) * 100}%`;
+    timelineYears.appendChild(span);
+  }
+  setTimelineYear(TIME_END, false);
+}
+
+if (timelineTrack && timelineCursor) {
+  buildTimeline();
+
+  const startDrag = (event) => {
+    if (event.button != null && event.button !== 0) return;
+    timelineDragging = true;
+    timelineCursor.setPointerCapture?.(event.pointerId);
+    setTimelineYear(ratioToYear(timelineRatioFromEvent(event)), true);
+    event.preventDefault();
+  };
+
+  timelineTrack.addEventListener("pointerdown", startDrag);
+  timelineCursor.addEventListener("pointerdown", startDrag);
+  timelineTrack.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    selectedYear = null;
+    setTimelineYear(TIME_END, false);
+  });
+  window.addEventListener("pointermove", (event) => {
+    if (!timelineDragging) return;
+    setTimelineYear(ratioToYear(timelineRatioFromEvent(event)), true);
+  });
+  window.addEventListener("pointerup", () => {
+    timelineDragging = false;
+  });
+  window.addEventListener("pointercancel", () => {
+    timelineDragging = false;
+  });
+}
+
 Promise.race([
   Promise.all(
     images.map(
@@ -1801,7 +2009,7 @@ Promise.race([
         })
     )
   ),
-  new Promise((resolve) => setTimeout(resolve, 2200)),
+  new Promise((resolve) => setTimeout(resolve, 900)),
 ]).then(() => {
   playEntry();
 });
