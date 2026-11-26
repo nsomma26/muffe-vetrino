@@ -315,6 +315,29 @@ body.is-dragging #slide {
   overflow: visible;
   transform-style: preserve-3d;
   pointer-events: none;
+  container-type: size;
+}
+
+.colony-channel {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  z-index: 1;
+  margin: 0;
+  padding: 0;
+  max-width: 78%;
+  transform: translate(-50%, -50%);
+  color: #111;
+  font-family: "Cascadia Mono", "Courier New", ui-monospace, monospace;
+  font-weight: 700;
+  font-size: clamp(11px, 5.8cqi, 38px);
+  line-height: 1.08;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+  text-wrap: balance;
+  pointer-events: none;
+  user-select: none;
 }
 
 .colony-spin {
@@ -541,13 +564,12 @@ body.is-dragging #slide {
 .timeline {
   position: fixed;
   z-index: 3;
-  left: 50%;
+  left: 26px;
   bottom: 18px;
-  transform: translateX(-50%);
-  width: min(720px, calc(100% - 220px));
+  width: min(420px, calc(100% - 48px));
   display: grid;
   gap: 8px;
-  justify-items: center;
+  justify-items: start;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.75s ease;
@@ -696,7 +718,8 @@ body.is-live .timeline {
   }
 
   .timeline {
-    width: calc(100% - 120px);
+    left: 16px;
+    width: min(420px, calc(100% - 120px));
     bottom: 52px;
   }
 

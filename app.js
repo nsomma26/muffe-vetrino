@@ -744,10 +744,23 @@ function bindLabelHover(label) {
 }
 
 // Fit = 4× base. Max magnifier = 14×. Photos appear from 8×.
+// Channel names fade out as power approaches LABEL_POWER.
 const VIEW_FILL = 0.98;
 const LOW_POWER = 4;
 const HIGH_POWER = 14;
 const LABEL_POWER = 8;
+const CHANNEL_FADE_START = LABEL_POWER - 0.9;
+const CHANNEL_FADE_END = LABEL_POWER - 0.15;
+
+// Order matches SPECIMENS indices (center = App e Marketplace).
+const CHANNEL_NAMES = [
+  "Facebook",
+  "Televisione",
+  "Tik Tok",
+  "YouTube",
+  "Web",
+  "App e Marketplace",
+];
 
 const slide = document.querySelector("#slide");
 const stage = document.querySelector("#stage");
@@ -805,6 +818,11 @@ const colonies = SPECIMENS.map((spec, index) => {
   spin.appendChild(shadow);
   spin.appendChild(img);
   el.appendChild(spin);
+  const channel = document.createElement("p");
+  channel.className = "colony-channel";
+  channel.textContent = CHANNEL_NAMES[index] || "";
+  channel.setAttribute("aria-hidden", "true");
+  el.appendChild(channel);
   // Labels stay upright on the colony — never rotate with the muffa art.
   const boxes = cardBoxes(spec);
   spec.cards.forEach((card, cardIndex) => {
@@ -842,6 +860,7 @@ const colonies = SPECIMENS.map((spec, index) => {
     spin,
     img,
     shadow,
+    channel,
     layW: lay.w,
     layH: lay.h,
     motion: { ...MOTION[index], phase: index * 2.15 },
@@ -983,6 +1002,11 @@ function paint() {
       colony.spin.style.width = `${colony.spec.w * zoom}px`;
       colony.spin.style.height = `${colony.spec.h * zoom}px`;
       const power = currentPower();
+      const channelOp = 1 - fade(power, CHANNEL_FADE_START, CHANNEL_FADE_END);
+      if (colony.channel) {
+        colony.channel.style.opacity = channelOp.toFixed(3);
+        colony.channel.hidden = channelOp < 0.02;
+      }
       for (const label of colony.el.querySelectorAll(".label")) {
         // Photos visible from 8× — filtered by timeline year when active.
         const yearOk = labelMatchesYear(label, selectedYear);
